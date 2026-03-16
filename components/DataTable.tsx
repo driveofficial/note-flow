@@ -8,8 +8,6 @@ import {
   GripVertical
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { supabase } from '@/lib/supabase';
-import imageCompression from 'browser-image-compression';
 import {
   DndContext, 
   closestCenter,
@@ -57,11 +55,9 @@ export default function DataTable() {
 
   const table = tables.find(t => t.id === currentTableId);
 
-  const updateTable = useCallback(async (newTable: any) => {
-    const newTables = tables.map(t => t.id === currentTableId ? newTable : t);
-    setTables(newTables);
-    await supabase.from('app_data').upsert({ id: 'main', data: { tables: newTables, categories, currentTableId } });
-  }, [tables, currentTableId, setTables, categories]);
+  const updateTable = useCallback((newTable: any) => {
+    setTables(tables.map(t => t.id === currentTableId ? newTable : t));
+  }, [tables, currentTableId, setTables]);
 
   const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (role !== 'admin' || !table) return;
@@ -666,16 +662,14 @@ const BADGE_COLORS = [
 ];
 
 function SmartCell({ row, col }: { row: any, col: any }) {
-  const { role, tables, setTables, currentTableId, categories } = useAppContext();
+  const { role, tables, setTables, currentTableId } = useAppContext();
   const value = row.cells[col.id] || '';
 
-  const updateCell = async (newValue: string) => {
+  const updateCell = (newValue: string) => {
     const table = tables.find(t => t.id === currentTableId);
     if (!table) return;
     const newRows = table.rows.map(r => r.id === row.id ? { ...r, cells: { ...r.cells, [col.id]: newValue } } : r);
-    const newTables = tables.map(t => t.id === currentTableId ? { ...t, rows: newRows } : t);
-    setTables(newTables);
-    await supabase.from('app_data').upsert({ id: 'main', data: { tables: newTables, categories, currentTableId } });
+    setTables(tables.map(t => t.id === currentTableId ? { ...t, rows: newRows } : t));
   };
 
   if (col.type === 'date') {
@@ -752,7 +746,7 @@ function SmartCell({ row, col }: { row: any, col: any }) {
 }
 
 function MediaCell({ row, col }: { row: any, col: any }) {
-  const { role, tables, setTables, currentTableId, categories, setMediaPreviewModal, setConfirmModal } = useAppContext();
+  const { role, tables, setTables, currentTableId, setMediaPreviewModal, setConfirmModal } = useAppContext();
   
   let mediaList: any[] = [];
   try {
@@ -764,80 +758,30 @@ function MediaCell({ row, col }: { row: any, col: any }) {
     }
   }
 
-  const updateCell = async (value: string) => {
+  const updateCell = (value: string) => {
     const table = tables.find(t => t.id === currentTableId);
     if (!table) return;
     const newRows = table.rows.map(r => r.id === row.id ? { ...r, cells: { ...r.cells, [col.id]: value } } : r);
-    const newTables = tables.map(t => t.id === currentTableId ? { ...t, rows: newRows } : t);
-    setTables(newTables);
-    await supabase.from('app_data').upsert({ id: 'main', data: { tables: newTables, categories, currentTableId } });
+    setTables(tables.map(t => t.id === currentTableId ? { ...t, rows: newRows } : t));
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    const toastId = toast.loading('กำลังเริ่มอัปโหลด...', { id: 'upload-toast', duration: Infinity });
-    console.log('Starting upload process for', files.length, 'files');
-    
-    try {
-      const newMedia = [...mediaList];
-      for (const file of Array.from(files)) {
-        let fileToUpload = file;
-        console.log('Processing file:', file.name, 'Size:', file.size, 'Type:', file.type);
-        
-        // Compress if it's an image
-        if (file.type.startsWith('image/')) {
-          toast.loading(`กำลังบีบอัด ${file.name}...`, { id: toastId });
-          const options = {
-            maxSizeMB: 1,
-            maxWidthOrHeight: 1920,
-            useWebWorker: true
-          };
-          try {
-            console.log('Compressing image...');
-            fileToUpload = await imageCompression(file, options);
-            console.log('Compressed size:', fileToUpload.size);
-          } catch (compErr) {
-            console.error('Compression error:', compErr);
-            // Fallback to original file if compression fails
-          }
-        }
-        
-        toast.loading(`กำลังอัปโหลด ${file.name}...`, { id: toastId });
-        console.log('Uploading to Supabase Storage...');
-        const filePath = `uploads/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        
-        try {
-          const { data, error } = await supabase.storage.from('media').upload(filePath, fileToUpload);
-          if (error) throw error;
-          
-          console.log('Upload successful to Supabase, getting URL...');
-          const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
-          console.log('Download URL obtained:', publicUrl);
-          
-          newMedia.push({
-            type: file.type,
-            name: file.name,
-            src: publicUrl
-          });
-        } catch (uploadErr) {
-          console.error("Supabase Storage Upload Error:", uploadErr);
-          toast.error(`อัปโหลดไฟล์ ${file.name} ล้มเหลว กรุณาลองใหม่อีกครั้ง`, { id: toastId });
-          // Stop execution if one upload fails completely
-          e.target.value = '';
-          return;
-        }
-      }
-      
-      console.log('All files uploaded successfully, updating cell data');
-      updateCell(JSON.stringify(newMedia));
-      toast.success('อัปโหลดเสร็จสิ้น!', { id: toastId });
-    } catch (err) {
-      console.error('General upload process error:', err);
-      toast.error('เกิดข้อผิดพลาดในการอัปโหลด', { id: toastId });
-    }
-    
+    const newMedia = [...mediaList];
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        newMedia.push({
+          type: file.type,
+          name: file.name,
+          src: ev.target?.result
+        });
+        updateCell(JSON.stringify(newMedia));
+      };
+      reader.readAsDataURL(file);
+    });
     e.target.value = '';
   };
 

@@ -265,30 +265,13 @@ export default function Modals() {
       {mediaPreviewModal.isOpen && mediaPreviewModal.media && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200" onClick={() => setMediaPreviewModal({ isOpen: false, media: null })}>
           <div className="bg-zinc-950 rounded-2xl shadow-2xl w-full max-w-4xl max-h-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-zinc-800" onClick={e => e.stopPropagation()}>
-              <div className="flex flex-col sm:flex-row items-center justify-between p-3 md:p-4 border-b border-zinc-800 bg-zinc-900/50 gap-3">
-                <h3 className="font-medium text-zinc-200 truncate pr-4 w-full sm:w-auto">{mediaPreviewModal.media.name || 'ตัวอย่างไฟล์'}</h3>
-                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                  <button onClick={async () => {
-                    const toastId = toast.loading('กำลังดาวน์โหลด...');
-                    try {
-                      const response = await fetch(mediaPreviewModal.media.src);
-                      const blob = await response.blob();
-                      const blobUrl = window.URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = blobUrl;
-                      a.download = mediaPreviewModal.media.name || 'download';
-                      document.body.appendChild(a);
-                      a.click();
-                      window.URL.revokeObjectURL(blobUrl);
-                      document.body.removeChild(a);
-                      toast.success('ดาวน์โหลดสำเร็จ! 📥', { id: toastId });
-                    } catch (err) {
-                      toast.error('ไม่สามารถดาวน์โหลดได้', { id: toastId });
-                    }
-                  }} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors font-medium border border-zinc-700" title="ดาวน์โหลด">
-                    <Download size={16} /> <span className="hidden sm:inline">บันทึกรูป</span><span className="sm:hidden">บันทึก</span>
-                  </button>
-                  {!mediaPreviewModal.media.type.startsWith('video') && (
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
+              <h3 className="font-medium text-zinc-200 truncate pr-4">{mediaPreviewModal.media.name || 'ตัวอย่างไฟล์'}</h3>
+              <div className="flex items-center gap-2 shrink-0">
+                <a href={mediaPreviewModal.media.src} download={mediaPreviewModal.media.name || 'download'} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors" title="ดาวน์โหลด">
+                  <Download size={18} />
+                </a>
+                {!mediaPreviewModal.media.type.startsWith('video') && (
                   <button onClick={() => {
                     fetch(mediaPreviewModal.media.src).then(res => res.blob()).then(blob => {
                       if (navigator.clipboard && navigator.clipboard.write) {

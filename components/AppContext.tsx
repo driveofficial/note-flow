@@ -3,7 +3,6 @@ import { createContext, useContext, useState, useEffect, useLayoutEffect, ReactN
 import { Role, Table, Category } from '@/lib/types';
 import { DEFAULT_TABLES, DEFAULT_CATEGORIES } from '@/lib/defaultData';
 
-import { supabase } from '@/lib/supabase';
 interface AppContextType {
   role: Role;
   setRole: (role: Role) => void;
@@ -66,56 +65,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null as (() => void) | null });
 
   const [isMounted, setIsMounted] = useState(false);
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setIsMounted(true);
-    
-    // Listen to Supabase data
-    const fetchInitialData = async () => {
-      const { data, error } = await supabase
-        .from('app_data')
-        .select('data')
-        .eq('id', 'main')
-        .single();
-      
-      if (data && data.data) {
-        const payload = data.data;
-        setTables(prev => JSON.stringify(prev) === JSON.stringify(payload.tables) ? prev : payload.tables || DEFAULT_TABLES);
-        setCategories(prev => JSON.stringify(prev) === JSON.stringify(payload.categories) ? prev : payload.categories || DEFAULT_CATEGORIES);
-        setCurrentTableId(prev => payload.currentTableId || prev);
-      } else {
-        // Initialize the database with default data if it doesn't exist
-        await supabase.from('app_data').upsert({
-          id: 'main',
-          data: {
-            tables: DEFAULT_TABLES,
-            categories: DEFAULT_CATEGORIES,
-            currentTableId: DEFAULT_TABLES[0].id
-          }
-        });
-      }
-      setIsDataLoaded(true);
-    };
-
-    fetchInitialData();
-
-    const channel = supabase
-      .channel('app_data_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'app_data', filter: 'id=eq.main' },
-        (payload: any) => {
-          if (payload.new && payload.new.data) {
-            const newData = payload.new.data;
-            setTables(prev => JSON.stringify(prev) === JSON.stringify(newData.tables) ? prev : newData.tables || DEFAULT_TABLES);
-            setCategories(prev => JSON.stringify(prev) === JSON.stringify(newData.categories) ? prev : newData.categories || DEFAULT_CATEGORIES);
-            setCurrentTableId(prev => newData.currentTableId || prev);
-          }
-        }
-      )
-      .subscribe();
-
+    const saved = localStorage.getItem('noteflow-db-v3');
+    if (saved) {
+      try {
+        const p = JSON.parse(saved);
+        setTables(p.tables || DEFAULT_TABLES);
+        setCategories(p.categories || DEFAULT_CATEGORIES);
+        setCurrentTableId(p.currentTableId || DEFAULT_TABLES[0].id);
+      } catch (e) {}
+    }
     const savedRole = sessionStorage.getItem('noteflow-role') as Role;
     if (savedRole) setRole(savedRole);
     
@@ -124,27 +85,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setTheme(savedTheme);
       if (savedTheme === 'dark') document.documentElement.classList.add('dark');
     }
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
-  // Save to Supabase whenever tables or categories change locally
   useEffect(() => {
-    if (!isMounted || !isDataLoaded) return;
-    
-    // Save immediately and rely on React's state batching for debounce
-    const saveState = async () => {
-      const { error } = await supabase.from('app_data').upsert({
-        id: 'main',
-        data: { tables, categories, currentTableId }
-      });
-      if (error) console.error("Supabase upsert error:", error);
-    };
-    
-    saveState();
-  }, [tables, categories, currentTableId, isMounted, isDataLoaded]);
+    if (!isMounted) return;
+    localStorage.setItem('noteflow-db-v3', JSON.stringify({ tables, categories, currentTableId }));
+  }, [tables, categories, currentTableId, isMounted]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
