@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode } from 'react';
 import { Role, Table, Category } from '@/lib/types';
 import { DEFAULT_TABLES, DEFAULT_CATEGORIES } from '@/lib/defaultData';
+import { supabase } from '@/lib/supabase';
 
 interface AppContextType {
   role: Role;
@@ -65,6 +66,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null as (() => void) | null });
 
   const [isMounted, setIsMounted] = useState(false);
+  const [initialLoadCompleted, setInitialLoadCompleted] = useState(false);
 
   useLayoutEffect(() => {
     setIsMounted(true);
@@ -87,9 +89,145 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  // Load data from Supabase once on mount (overrides localStorage if present)
   useEffect(() => {
     if (!isMounted) return;
-    localStorage.setItem('noteflow-db-v3', JSON.stringify({ tables, categories, currentTableId }));
+    let cancelled = false;
+
+    const loadFromSupabase = async () => {
+      try {
+        // #region agent log
+        fetch('http://127.0.0.1:7267/ingest/a96f543a-6f38-4522-b1d9-e498be3ccd4f', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '227859',
+          },
+          body: JSON.stringify({
+            sessionId: '227859',
+            runId: 'initial-load',
+            hypothesisId: 'H1',
+            location: 'components/AppContext.tsx:loadFromSupabase',
+            message: 'Loading data from Supabase app_data table',
+            data: {},
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+
+        const { data, error } = await supabase
+          .from('app_data')
+          .select('id, data')
+          .eq('id', 'main')
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        // #region agent log
+        fetch('http://127.0.0.1:7267/ingest/a96f543a-6f38-4522-b1d9-e498be3ccd4f', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '227859',
+          },
+          body: JSON.stringify({
+            sessionId: '227859',
+            runId: 'initial-load',
+            hypothesisId: 'H1',
+            location: 'components/AppContext.tsx:loadFromSupabase',
+            message: 'Supabase load result',
+            data: {
+              hasError: !!error,
+              hasData: !!data,
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+
+        if (error || !data || !data.data) return;
+
+        const payload = data.data as {
+          tables?: Table[];
+          categories?: Category[];
+          currentTableId?: string | null;
+        };
+
+        setTables(payload.tables || DEFAULT_TABLES);
+        setCategories(payload.categories || DEFAULT_CATEGORIES);
+        setCurrentTableId(payload.currentTableId || DEFAULT_TABLES[0].id);
+      } catch {
+        // ignore Supabase errors here, fallback is localStorage/defaults
+      } finally {
+        setInitialLoadCompleted(true);
+      }
+    };
+
+    loadFromSupabase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMounted]);
+
+  useEffect(() => {
+    if (!isMounted || !initialLoadCompleted) return;
+    const payload = { tables, categories, currentTableId };
+    localStorage.setItem('noteflow-db-v3', JSON.stringify(payload));
+
+    const saveToSupabase = async () => {
+      try {
+        // #region agent log
+        fetch('http://127.0.0.1:7267/ingest/a96f543a-6f38-4522-b1d9-e498be3ccd4f', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '227859',
+          },
+          body: JSON.stringify({
+            sessionId: '227859',
+            runId: 'save',
+            hypothesisId: 'H1',
+            location: 'components/AppContext.tsx:saveToSupabase',
+            message: 'Saving data to Supabase app_data table',
+            data: {},
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+
+        const { error } = await supabase.from('app_data').upsert(
+          {
+            id: 'main',
+            data: payload,
+          },
+          { onConflict: 'id' }
+        );
+
+        // #region agent log
+        fetch('http://127.0.0.1:7267/ingest/a96f543a-6f38-4522-b1d9-e498be3ccd4f', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '227859',
+          },
+          body: JSON.stringify({
+            sessionId: '227859',
+            runId: 'save',
+            hypothesisId: 'H1',
+            location: 'components/AppContext.tsx:saveToSupabase',
+            message: 'Supabase save result',
+            data: { hasError: !!error },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+      } catch {
+        // ignore Supabase errors for now; localStorage is still updated
+      }
+    };
+
+    saveToSupabase();
   }, [tables, categories, currentTableId, isMounted]);
 
   const toggleTheme = () => {
